@@ -23,7 +23,8 @@ io.on('connection', (socket) => {
       letrasCorrectas: [],
       letrasIncorrectas: [],
       vidas: 6,
-      estado: 'esperando'
+      estado: 'esperando',
+      tiempoInicio: 0
     };
     socket.join(codigoSala);
     socket.emit('salaCreada', { codigoSala, jugadores: salas[codigoSala].jugadores, esAnfitrion: true });
@@ -53,6 +54,7 @@ io.on('connection', (socket) => {
     sala.letrasCorrectas = [];
     sala.letrasIncorrectas = [];
     sala.vidas = 6;
+    sala.tiempoInicio = 0;
 
     const escritor = sala.jugadores[sala.indiceEscritor];
     sala.indiceAdivinador = (sala.indiceEscritor + 1) % sala.jugadores.length;
@@ -71,6 +73,7 @@ io.on('connection', (socket) => {
     sala.palabraSecreta = palabra.trim().toUpperCase();
     sala.pistaSecreta = pista.trim() || 'Sin pista';
     sala.estado = 'jugando';
+    sala.tiempoInicio = Date.now(); // Marca exacta de inicio
 
     enviarEstadoJuego(codigoSala);
   });
@@ -87,37 +90,51 @@ io.on('connection', (socket) => {
 
     if (sala.palabraSecreta.includes(letra)) {
       sala.letrasCorrectas.push(letra);
-      jugadorTurno.puntos += 10; // +10 puntos por acierto
     } else {
       sala.letrasIncorrectas.push(letra);
       sala.vidas -= 1;
     }
+
+    const escritor = sala.jugadores[sala.indiceEscritor];
 
     // Verificar victoria
     const letrasUnicas = [...new Set(sala.palabraSecreta.replace(/ /g, '').split(''))];
     const gano = letrasUnicas.every(l => sala.letrasCorrectas.includes(l));
 
     if (gano) {
-      jugadorTurno.puntos += 50; // +50 puntos bonus por completar la palabra
+      const segundosTranscurridos = Math.floor((Date.now() - sala.tiempoInicio) / 1000);
+      const dentroDeTiempo = segundosTranscurridos <= 120; // 2 minutos = 120 segundos
+
+      jugadorTurno.puntos += 100; // Quien adivina siempre gana 100 pts
+      escritor.puntos += dentroDeTiempo ? 50 : 10; // Escritor gana 50 pts si fue <= 2 min, sino 10 pts
+
       sala.estado = 'esperando';
       sala.indiceEscritor = (sala.indiceEscritor + 1) % sala.jugadores.length;
+      
       return io.to(codigoSala).emit('finRonda', {
         resultado: 'victoria',
         palabra: sala.palabraSecreta,
         ganador: jugadorTurno.nombre,
+        escritor: escritor.nombre,
+        puntosEscritor: dentroDeTiempo ? 50 : 10,
+        segundos: segundosTranscurridos,
         jugadores: sala.jugadores
       });
     }
 
-    // Verificar derrota
+    // Verificar derrota (se acaban las 6 vidas sin adivinar)
     if (sala.vidas <= 0) {
-      sala.jugadores[sala.indiceEscritor].puntos += 30; // +30 puntos para quien puso la palabra difícil
+      // Adivinadores ganan 0 pts, el escritor gana 50 pts
+      escritor.puntos += 50;
+
       sala.estado = 'esperando';
       sala.indiceEscritor = (sala.indiceEscritor + 1) % sala.jugadores.length;
+
       return io.to(codigoSala).emit('finRonda', {
         resultado: 'derrota',
         palabra: sala.palabraSecreta,
-        escritor: sala.jugadores[(sala.indiceEscritor - 1 + sala.jugadores.length) % sala.jugadores.length].nombre,
+        escritor: escritor.nombre,
+        puntosEscritor: 50,
         jugadores: sala.jugadores
       });
     }
@@ -167,6 +184,7 @@ function enviarEstadoJuego(codigoSala) {
     turnoId: adivinadorActual.id,
     turnoNombre: adivinadorActual.nombre,
     escritorId: escritorActual.id,
+    tiempoInicio: sala.tiempoInicio,
     jugadores: sala.jugadores
   });
 }

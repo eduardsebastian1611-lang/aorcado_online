@@ -4,6 +4,7 @@ const salaUrl = urlParams.get('sala');
 
 let codigoSalaActual = '';
 let soyAnfitrion = false;
+let intervaloReloj = null;
 
 if (salaUrl) {
   document.getElementById('btn-crear').classList.add('oculto');
@@ -77,6 +78,7 @@ document.getElementById('btn-empezar').onclick = () => socket.emit('iniciarRonda
 document.getElementById('btn-siguiente-ronda').onclick = () => socket.emit('iniciarRonda', codigoSalaActual);
 
 socket.on('faseElegirPalabra', ({ escritorId, escritorNombre }) => {
+  detenerReloj();
   mostrarPantalla('pantalla-elegir');
   if (socket.id === escritorId) {
     document.getElementById('vista-escritor').classList.remove('oculto');
@@ -99,14 +101,45 @@ document.getElementById('btn-enviar-palabra').onclick = () => {
   socket.emit('enviarPalabra', { codigoSala: codigoSalaActual, palabra, pista });
 };
 
+// Control del cronómetro en vivo
+function iniciarReloj(tiempoInicio) {
+  detenerReloj();
+  const relojEl = document.getElementById('reloj-display');
+
+  const actualizar = () => {
+    const segundosTotales = Math.floor((Date.now() - tiempoInicio) / 1000);
+    const min = String(Math.floor(segundosTotales / 60)).padStart(2, '0');
+    const seg = String(segundosTotales % 60).padStart(2, '0');
+    
+    relojEl.textContent = `⏱️ ${min}:${seg}`;
+    
+    if (segundosTotales > 120) {
+      relojEl.classList.add('timer-expirado');
+    } else {
+      relojEl.classList.remove('timer-expirado');
+    }
+  };
+
+  actualizar();
+  intervaloReloj = setInterval(actualizar, 1000);
+}
+
+function detenerReloj() {
+  if (intervaloReloj) {
+    clearInterval(intervaloReloj);
+    intervaloReloj = null;
+  }
+}
+
 // Tablero y SVG
-socket.on('actualizarTablero', ({ palabraOculta, pista, vidas, letrasCorrectas, letrasIncorrectas, turnoId, turnoNombre, escritorId, jugadores }) => {
+socket.on('actualizarTablero', ({ palabraOculta, pista, vidas, letrasCorrectas, letrasIncorrectas, turnoId, turnoNombre, escritorId, tiempoInicio, jugadores }) => {
   mostrarPantalla('pantalla-juego');
   renderizarJugadores(jugadores, 'marcador-juego');
   document.getElementById('texto-pista').textContent = pista;
   document.getElementById('palabra-display').textContent = palabraOculta;
+  
+  iniciarReloj(tiempoInicio);
 
-  // Actualizar dibujo SVG del ahorcado
   for (let i = 0; i < 6; i++) {
     const parte = document.getElementById(`parte-${i}`);
     if (vidas <= i) {
@@ -160,14 +193,21 @@ function renderizarTeclado(correctas, incorrectas, habilitar) {
 }
 
 // Fin de ronda
-socket.on('finRonda', ({ resultado, palabra, ganador, escritor, jugadores }) => {
+socket.on('finRonda', ({ resultado, palabra, ganador, escritor, puntosEscritor, segundos, jugadores }) => {
+  detenerReloj();
   mostrarPantalla('pantalla-fin');
   renderizarJugadores(jugadores, 'marcador-fin');
   
-  document.getElementById('titulo-resultado').textContent = 
-    resultado === 'victoria' 
-      ? `🎉 ¡Punto para ${ganador}! (+50 pts)` 
-      : `💀 ¡Ahorcados! Nadie adivinó (+30 pts para ${escritor})`;
+  if (resultado === 'victoria') {
+    document.getElementById('titulo-resultado').textContent = `🎉 ¡${ganador} adivinó la palabra! (+100 pts)`;
+    document.getElementById('detalle-puntos').textContent = 
+      segundos <= 120 
+        ? `Tiempo: ${segundos}s (menos de 2 min) → ${escritor} gana +${puntosEscritor} pts.`
+        : `Tiempo: ${segundos}s (pasaron 2 min) → ${escritor} gana +${puntosEscritor} pts.`;
+  } else {
+    document.getElementById('titulo-resultado').textContent = '💀 ¡Ahorcados! Nadie adivinó (0 pts)';
+    document.getElementById('detalle-puntos').textContent = `${escritor} gana +${puntosEscritor} pts por poner la palabra.`;
+  }
       
   document.getElementById('palabra-revelada').textContent = `La palabra era: ${palabra}`;
 
@@ -179,6 +219,7 @@ socket.on('finRonda', ({ resultado, palabra, ganador, escritor, jugadores }) => 
 });
 
 socket.on('errorSala', (msg) => {
+  detenerReloj();
   alert(msg);
   window.location.href = window.location.origin;
 });
@@ -187,3 +228,4 @@ function copiarLink() {
   navigator.clipboard.writeText(document.getElementById('link-invitacion').value);
   alert('¡Enlace copiado! Envíalo a tus amigos.');
 }
+
