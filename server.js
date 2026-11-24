@@ -73,12 +73,12 @@ io.on('connection', (socket) => {
     sala.palabraSecreta = palabra.trim().toUpperCase();
     sala.pistaSecreta = pista.trim() || 'Sin pista';
     sala.estado = 'jugando';
-    sala.tiempoInicio = Date.now(); // Marca exacta de inicio
+    sala.tiempoInicio = Date.now();
 
     enviarEstadoJuego(codigoSala);
   });
 
-  // 5. Intentar letra
+  // 5. Intentar letra (mantiene el turno si acierta, pasa turno solo si falla)
   socket.on('intentarLetra', ({ codigoSala, letra }) => {
     const sala = salas[codigoSala];
     if (!sala || sala.estado !== 'jugando') return;
@@ -88,7 +88,9 @@ io.on('connection', (socket) => {
 
     if (sala.letrasCorrectas.includes(letra) || sala.letrasIncorrectas.includes(letra)) return;
 
-    if (sala.palabraSecreta.includes(letra)) {
+    const acerto = sala.palabraSecreta.includes(letra);
+
+    if (acerto) {
       sala.letrasCorrectas.push(letra);
     } else {
       sala.letrasIncorrectas.push(letra);
@@ -103,10 +105,10 @@ io.on('connection', (socket) => {
 
     if (gano) {
       const segundosTranscurridos = Math.floor((Date.now() - sala.tiempoInicio) / 1000);
-      const dentroDeTiempo = segundosTranscurridos <= 120; // 2 minutos = 120 segundos
+      const dentroDeTiempo = segundosTranscurridos <= 120;
 
-      jugadorTurno.puntos += 100; // Quien adivina siempre gana 100 pts
-      escritor.puntos += dentroDeTiempo ? 50 : 10; // Escritor gana 50 pts si fue <= 2 min, sino 10 pts
+      jugadorTurno.puntos += 100;
+      escritor.puntos += dentroDeTiempo ? 50 : 10;
 
       sala.estado = 'esperando';
       sala.indiceEscritor = (sala.indiceEscritor + 1) % sala.jugadores.length;
@@ -122,9 +124,8 @@ io.on('connection', (socket) => {
       });
     }
 
-    // Verificar derrota (se acaban las 6 vidas sin adivinar)
+    // Verificar derrota
     if (sala.vidas <= 0) {
-      // Adivinadores ganan 0 pts, el escritor gana 50 pts
       escritor.puntos += 50;
 
       sala.estado = 'esperando';
@@ -139,10 +140,12 @@ io.on('connection', (socket) => {
       });
     }
 
-    // Siguiente adivinador
-    do {
-      sala.indiceAdivinador = (sala.indiceAdivinador + 1) % sala.jugadores.length;
-    } while (sala.indiceAdivinador === sala.indiceEscritor);
+    // Si FALLÓ la letra, pasar turno al siguiente adivinador. Si ACERTÓ, conserva el turno.
+    if (!acerto) {
+      do {
+        sala.indiceAdivinador = (sala.indiceAdivinador + 1) % sala.jugadores.length;
+      } while (sala.indiceAdivinador === sala.indiceEscritor);
+    }
 
     enviarEstadoJuego(codigoSala);
   });
