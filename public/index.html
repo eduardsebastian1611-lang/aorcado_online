@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ahorcado Multijugador</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 20px; }
+    .oculto { display: none; }
+    input, button { padding: 10px; font-size: 16px; margin: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Juego del Ahorcado</h1>
+
+  <!-- Pantalla 1: Ingreso -->
+  <div id="pantalla-inicio">
+    <input type="text" id="nombre" placeholder="Tu apodo" maxlength="15">
+    <br>
+    <button id="btn-crear">Crear Nueva Sala</button>
+    <button id="btn-unirse" class="oculto">Unirse a la Sala</button>
+  </div>
+
+  <!-- Pantalla 2: Sala de Espera (Lobby) -->
+  <div id="pantalla-sala" class="oculto">
+    <h2>Sala: <span id="codigo-display"></span></h2>
+    <p>Comparte este enlace con tus amigos:</p>
+    <input type="text" id="link-invitacion" readonly style="width: 80%; max-width: 400px;">
+    <button onclick="copiarLink()">Copiar Enlace</button>
+    
+    <h3>Jugadores conectados:</h3>
+    <ul id="lista-jugadores" style="list-style: none; padding: 0;"></ul>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
